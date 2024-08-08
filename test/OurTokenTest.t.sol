@@ -1,35 +1,49 @@
-// SPDX-Licence-Identifier: MIT
+// SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.19;
 
-import {Test} from "forge-std/Test.sol";
-import {DeployOurToken} from "../script/DeployOurToken.s.sol";
 import {DeployOurToken} from "../script/DeployOurToken.s.sol";
 import {OurToken} from "../src/OurToken.sol";
+import {Test, console} from "forge-std/Test.sol";
+import {ZkSyncChainChecker} from "lib/foundry-devops/src/ZkSyncChainChecker.sol";
 
-contract OurTokenTest is Test {
+interface MintableToken {
+    function mint(address, uint256) external;
+}
+
+contract OurTokenTest is Test, ZkSyncChainChecker {
+    uint256 BOB_STARTING_AMOUNT = 100 ether;
+    uint256 public constant INITIAL_SUPPLY = 1_000_000 ether; // 1 million tokens with 18 decimal places
+
     OurToken public ourToken;
     DeployOurToken public deployer;
-
-    address bob = makeAddr("bob");
-    address alice = makeAddr("alice");
-
-    uint256 public constant STARTING_BALANCE = 100 ether;
+    address public deployerAddress;
+    address bob;
+    address alice;
 
     function setUp() public {
         deployer = new DeployOurToken();
-        ourToken = deployer.run();
+        if (!isZkSyncChain()) {
+            ourToken = deployer.run();
+        } else {
+            ourToken = new OurToken(INITIAL_SUPPLY);
+            ourToken.transfer(msg.sender, INITIAL_SUPPLY);
+        }
+
+        bob = makeAddr("bob");
+        alice = makeAddr("alice");
 
         vm.prank(msg.sender);
-        ourToken.transfer(bob, STARTING_BALANCE);
-    }
-
-    function testBobBalance() public {
-        assertEq(STARTING_BALANCE, ourToken.balanceOf(bob));
+        ourToken.transfer(bob, BOB_STARTING_AMOUNT);
     }
 
     function testInitialSupply() public view {
         assertEq(ourToken.totalSupply(), deployer.INITIAL_SUPPLY());
+    }
+
+    function testUsersCantMint() public {
+        vm.expectRevert();
+        MintableToken(address(ourToken)).mint(address(this), 1);
     }
 
     function testAllowances() public {
@@ -44,6 +58,8 @@ contract OurTokenTest is Test {
         vm.prank(alice);
         ourToken.transferFrom(bob, alice, transferAmount);
         assertEq(ourToken.balanceOf(alice), transferAmount);
-        assertEq(ourToken.balanceOf(bob), STARTING_BALANCE - transferAmount);
+        assertEq(ourToken.balanceOf(bob), BOB_STARTING_AMOUNT - transferAmount);
     }
+
+    // can you get the coverage up?
 }
